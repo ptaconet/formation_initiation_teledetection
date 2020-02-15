@@ -19,9 +19,9 @@ Prérequis pour aborder sereinement le document: concepts de bases en SIG et té
 
 Mots clés : télédétéction spatiale, Sentinel 2, occupation du sol, classification supervisée orientée pixel
 
-**Note importante n°1 : ** Avant de commencer le tutoriel, veillez à installer et configurer l’ensemble des logiciels utiles ! Rendez-vous à l’annexe n°1 pour un guide d’installation et de configuration des logiciels.
+**Note importante n°1** : Avant de commencer le tutoriel, veillez à installer et configurer l’ensemble des logiciels utiles ! Rendez-vous à l’annexe n°1 pour un guide d’installation et de configuration des logiciels.
 
-**Note importante n°2 : ** Les jeux de données mentionnées dans ce tutoriel sont fournies aux personnes formées. Afin de contrôler si les données générées aux différentes étapes du tutoriel sont conformes à ce qui est attendu, l’ensemble des données intermédiaires est également fourni.
+**Note importante n°2** : Les jeux de données mentionnées dans ce tutoriel sont fournies aux personnes formées. Afin de contrôler si les données générées aux différentes étapes du tutoriel sont conformes à ce qui est attendu, l’ensemble des données intermédiaires est également fourni.
 
 **Liens :**
 
