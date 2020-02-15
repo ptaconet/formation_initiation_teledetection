@@ -1,9 +1,7 @@
-# formation_initiation_teledetection
+# Tutoriel de formation d'initiation à la télédétection
 
 <!-- badges: start -->
 <!-- badges: end -->
-
-Tutoriel de formation d'initiation à la télédétection
 
 * Rmd : https://github.com/ptaconet/formation_initiation_teledetection/blob/master/_formation_teledec.Rmd
 * pdf : https://github.com/ptaconet/formation_initiation_teledetection/blob/master/formation_teledec.pdf
