@@ -1,4 +1,4 @@
-# Tutoriel de formation d'initiation à la télédétection sur logiciel libre
+# Tutoriel d'initiation à la télédétection sur logiciel libre
 
 <!-- badges: start -->
 <!-- badges: end -->
