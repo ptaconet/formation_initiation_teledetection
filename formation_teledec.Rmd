@@ -1,0 +1,648 @@
+---
+title: "Initiation à la télédétection spatiale sur logiciel libre"
+author: | 
+  | Paul Taconet
+  | Institut de Recherche pour le Développement (IRD), UMR MIVEGEC
+date: "30/10/2019"
+output: 
+  rmarkdown::pdf_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+    fig_caption: yes        
+    includes:  
+      in_header: my_header.tex
+urlcolor: blue
+toc-title: "Table des matières"
+---
+
+```{r setup, include=FALSE}
+#Sys.setenv(PATH=paste0(Sys.getenv("PATH"),"C:\\Users\\pault\\AppData\\Local\\Programs\\MiKTeX2.9\\miktex\\bin\\x64"))
+knitr::opts_chunk$set(echo=F,out.width = "100%")
+options(tinytex.verbose = TRUE)
+path_to_pic <- "/home/ptaconet/formation_initiation_teledetection/images"
+```
+
+# Introduction
+
+Ce document est un tutoriel d'initiation à la manipulation d'images satellites d'observation de la Terre. L'objectif est de fournir quelques clés pour appréhender ce type de données sur des logiciels informatiques dédiés libres et à code source ouverts (*free and open source software*), via un cas d'utilisation classique en télédétéction spatiale : la cartographie l'occupation/utilisation du sol. 
+
+Nous proposons d'utiliser le logiciel QGIS comme interface principale de visualisation des données et de paramétrisation des algorithmes, tout en "augmentant" ses fonctionnalités de base grâce à sa capacité à intégrer de nombreuses librairies spatiales externes.
+
+Plus spécifiquement, nous utilisons les logiciels et librairies suivantes : 
+
+- *QGIS v3.10* 
+- *SAGA v7.4.0* 
+<!---- *OTB v7.0*-->
+- La chaine de traitements *Sen2cor v2.5.5* et l'extension QGIS *Sen2Cor Adapter *
+
+Les images satellites manipulées sont des produits Sentinel-2 au niveau 1C ainsi que le modèle numérique de terrain Shuttle Radar Topography Mission (SRTM). Ces produits sont en libre accès et disponibles sur l'ensemble de la surface terrestre.
+
+**Prérequis pour aborder sereinement le document**: concepts de bases en SIG et télédétéction, utilisation basique de QGIS (ouvrir et manipuler des données vectorielles et rasterisées sur QGIS)
+
+**Mots clés** : télédétéction spatiale, Sentinel 2, occupation du sol, classification supervisée orientée pixel
+
+**Note importante n°1** : Avant de commencer le tutoriel, veillez à installer et configurer l'ensemble des logiciels utiles ! Rendez-vous à l'[annexe n°1](#telecharger-logiciels) pour un guide d'installation et de configuration des logiciels.
+
+**Note importante n°2** : Les jeux de données mentionnées dans ce tutoriel sont fournies aux personnes formées. Afin de contrôler si les données générées aux différentes étapes du tutoriel sont conformes à ce qui est attendu, l'ensemble des données intermédiaires est également fourni.
+
+# Présentation du cas d'études {#presentation-cas-etude}
+
+Dans cette étude fictive, nous souhaitons améliorer les connaissances sur les habitats favorables aux moustiques vecteurs du paludisme dans le Sud-Ouest du Burkina Faso. Pour cela, nous avons collecté des moustiques par capture sur sujet humain dans plusieurs villages de la région de Diebougou. Nous allons à présent cartographier l'occupation du sol sur la zone d'étude. En croisant finalement les deux jeux de données (captures de moustiques et occupation du sol), nous pourrons répondre à notre problématique initiale.
+
+Les villages dans lequels nous avons effectué les captures sont fournis en tant que fichier vectoriel sous `vecteur/villages.gpkg`. Nous souhaitons définir la région d'intérêt (en anglais 'Region Of Interest') de notre étude, c'est-à-dire, la surface géographique pour laquelle nous allons faire une carte d'occupation du sol. 
+
+**Objectifs** : 
+
+- Définir l'emprise de la région d'intérêt de notre étude (avec `QGIS > Créer une couche`).
+
+**Etapes** : 
+
+- Ouvrez la couche `vecteur/villages.gpkg` sur QGIS.
+- Ajoutez une carte en arrière plan pour contextualiser la zone (par exemple si vous disposez d'une connexion internet : une image Google Satellite en utilisant l'extension [Quick Map Services](https://plugins.qgis.org/plugins/quick_map_services/) de QGIS).
+- Créez une nouvelle couche vectorielle polygonale qui englobe l'ensemble des villages. Enregistrez la sous `vecteur/roi.gpkg`. Veillez à bien lui attribuer une projection en UTM (EPSG : 32630).
+
+**Avez-vous réussi ?**
+
+- Quelle surface (en km^2^) la zone d'étude couvre-t-elle ?  
+
+# Recueillir les données
+
+Dans le cadre d'une classification supervisée à des fins de cartographie d'occupation du sol, nous avons besoin de deux types de données : 
+
+- *Les vérités terrains*. C'est un échantillon reprénsentatif des classes d'occupation du sol présentes sur notre zone d'étude. Ce sont les données terrain qui vont nous permettre d'entraîner et de valider notre modèle de classification (la classe d'occupation du sol constitue la **variable à expliquer** du modèle de cartographie de l'occupation du sol que l'on va constituer) ;
+- *Les produits satellitaires*. Ce sont les images satellites qui nous permettre de cartographier l'occupation du sol à grande échelle. Ces données vont représenter ce qu'on appelle les **variables explicatives** du modèle. 
+
+## Recueillir les données terrain {#recueil_donnees_terrain}
+
+Une classification supervisée requiert, par définition, un jeu de données d'entraînement et de validation du modèle. Dans le cas d'une classification de l'occupation du sol, il s'agit de collecter un échantillon représentatif des parcelles d'occupation du sol de notre zone d'étude. 
+
+L'objectif de cette étape est donc d'acquérir une couche SIG vectorielle de polygones représentant des parcelles dont on est certain de la classe d'occupation du sol, en procédant en deux temps : 
+
+1. Définir les classes d'occupation du sol présentes sur notre territoire d'étude, en consultant la littérature par exemple. Les classes définies doivent être exhaustives (c'est-à-dire couvrir l'ensemble des classes présentes sur notre zone d'étude), pertinentes et adaptées à la problématique (par exemple, dans le cas d'une étude sur la modélisation de la présence de moustiques, établir une classe 'zones humides' sera important).
+2. Collecter les vérités terrain, sur le terrain directement et/ou via d'autres méthodes pertinentes (par exemple [photo-interprétation](https://en.wikipedia.org/wiki/Aerial_photographic_and_satellite_image_interpretation
+)). Il faut avoir un nombre de parcelles minimum pour chacune des classes définies. La classification sera d'autant plus performante que le nombre de parcelles du jeu de données de vérité terrain est important. Le nombre minimum de parcelles à acquérir pour chacune des classes fait l'objet de débats dans la littérature, mais retenez qu'un minimum de 20 parcelles pour chacune des classes d'occupation du sol définie est nécéssaire.
+
+<!---- Nous présentons en [Annexe 2](#annexe-qfield) une méthode pour collecter les vérités terrain sur le terrain en utilisant l'application Qfield pour QGIS sur tablette Androïd.-->
+
+Dans ce tutoriel, nous utiliserons un jeu de données terrain qui a été aquis en novembre 2018 dans notre région d'intérêt. Le jeu de données est stocké sous `vecteur/ground_truth.shp`. Nous avons établi 5 classes d'occupation du sol : eau permanente, milieux dégradés, zones humides, cultures et jachères, milieux naturels.
+
+<!----
+**Objectifs** : 
+
+- Collecter le jeu de données de vérités terrain (avec l'application` Qfield for QGIS` (voir l'[annexe 2](#annexe-qfield)))
+-->
+
+**Etapes** : 
+
+- Ouvrez le jeu de données `vecteur/ground_truth.shp` et explorez son contenu (colonnes, nombre de parcelles pour chacune des classes, etc.). 
+- Ajoutez une symbologie catégorielle au jeu de données, afin de colorier les parcelles en fonction de la classe d'occupation du sol qu'ils représentent.
+
+**Avez-vous réussi ?**
+
+- Combien y a-t-il d'éléments (c'est-à-dire de polygones) dans la classe "eau permanente" ?
+
+## Identifier les produits satellitaires {#collecter-data-sat}
+
+Les produits satellitaires vont nous permettre de cartographier l'occupation du sol sur l'ensemble de notre zone d'étude. Dans notre cas, nous allons utiliser deux types de produits : des images satellites optiques et un [modèle numérique de terrain](https://fr.wikipedia.org/wiki/Mod%C3%A8le_num%C3%A9rique_de_terrain) (MNT). 
+
+Il existe de nombreuses sources d'images satellites optiques. Les images se distinguent par leurs résolutions spatiale (de quelques centimetres à plusieurs kilomètres) et spectrale, leur étendue (quelques dizaines de kilomètre carrés à plusieurs dizaines de milliers de km^2^), leur date d'aquisition, leur coût (gratuit à plusieurs milliers d'euros), etc. C'est la nature de notre projet et nos contraintes qui guident le choix des images à utiliser. L'[Annexe 2](#annexe-prod-sat) présente une liste (non-exhautive) de site internet pour pré-visualiser et récupérer des produits satellitaires.
+
+Dans notre cas, nous utiliserons des données issues du satellite [Sentinel-2](https://earth.esa.int/web/sentinel/missions/sentinel-2). Sentinel-2 fait partie de la constellation de satellites du programme Sentinel de l'Agence Spatiale Européenne. Le capteur dont il est équipé (MultiSpectral imager) capture des images dans 13 bandes spectrales dans les domaines du visible et de l'infrarouge, allant de 10 à 60 mètres de résolution spatiale. La période de revisite du satellite est de 5 jours. Les données sont libres d'accès, comme toutes les données du programme Sentinel. Il existe de multiples manières de récupérer des images Sentinel 2. Une des plus simples est de passer par le [**Copernicus Open Access Hub**](https://scihub.copernicus.eu/dhus/), un portail dedié avec une interface utilisateur permettant de rechercher et télécharger des images du programme Sentinel. 
+
+Le modèle numérique de terrain, de son côté, nous servira à affiner la classification. Le MNT founit l'altitude en tout point. Grâce à cette information, nous pouvons extraire nombre d'informations supplémentaires (pente, orientiation, etc.). Il existe deux MNT globaux gratuits : le [Shuttle Radar Topography Mission](https://fr.wikipedia.org/wiki/Shuttle_Radar_Topography_Mission) (SRTM) et le [Global Digital Elevation Model](https://asterweb.jpl.nasa.gov/gdem.asp) (GDEM). Ces deux MNT ont une résolution spatiale de 30 mètres, et se valent en terme de qualité et précision. Dans notre cas nous utiliserons le SRTM. 
+
+**Objectifs** : 
+
+- Rechercher, identifier et télécharger des images satellites Sentinel-2 (avec le site `Copernicus Open Access Hub`)
+- Identifier et télécharger un modèle numérique de terrain (avec le site `30-Meter SRTM Tile Downloader`)
+
+**Etapes** : 
+
+1. Télécharger les images Sentinel 2 
+- Créez un compte auparavent sur le [site des produits d'Observation de la Terre de l'ESA](https://scihub.copernicus.eu/dhus/#/self-registration).
+- Allez sur le Copernicus Open Access Hub: https://scihub.copernicus.eu/dhus/ puis identifiez vous via le bouton *login*.
+- Affinez la recherche avec les éléments suivants: 
+  + **Sensing period** doit correspondre à une fenêtre de dates autour de notre date de campagne de relevé des vérités terrain (mettre tout le mois de novembre 2018) ;
+  + **Mission**  est Sentinel-2 ;
+  + Tracez une région autour de notre zone d'étude ;
+  + Cliquez finalement sur la loupe pour rechercher. 
+
+```{r, fig.cap="Copernicus Open Access Hub - recherche de produits satellites"}
+knitr::include_graphics(rep(file.path(path_to_pic,"sentinel_hub_search.png")))
+```
+
+- Les produits répondant à la recherche apparaissent alors. Dans le panneau de gauche, l'ensemble des images correspondant à notre recherche sont affichées. Dans notre cas, nous observons que notre zone d'études se trouve à la frontière entre deux images, il va donc falloir télécharger deux images pour couvrir entièrement notre zone. Observez le panneau de gauche avec les images disponibles. Pour chacune, l'information 'Sensing date' donne la date à laquelle elle a été photographiée. Nous avons 6 couples d'images sur l'ensemble du mois de novembre. Le choix de l'image que l'on utilisera se fera généralement selon les critères suivants (par ordre d'importance): 
+  + Couverture nuageuse : sachant que dans le domaine de l'imagerie optique on perd l'information de tout pixel sous un nuage, on cherchera à conserver l'image qui a la couverture nuageuse la moins importante. Ainsi par exemple, on excluera l'image du 2018-11-21 qui est quasiment entièrement sous les nuages.
+  + Niveau de traitement de l'image : les images Sentinel 2 sont distribuées principalement selon deux niveaux de traitements : niveau 1C ou niveau 2A. Au niveau 2A, les corrections géométriques et atmosphériques sont effectuées. Il est donc préférable d'utiliser une image de niveau 2A si disponible. Dans notre cas, il nous est proposé uniquement des images de niveau 1C, nous allons donc effectuer les corrections nous mêmes (voir section [Préparer les images satellites optiques](#prepa-images-optiques))
+  + Proximité temporelle à notre campagne de relevé des vérités terrain.
+  
+Téléchargez les images *S2B_MSIL1C_20181116T103309_N0207_R108_T30PVT_20181116T160025* et *S2B_MSIL1C_20181116T103309_N0207_R108_T30PVS_20181116T160025* puis décompressez les dans un dossier de votre choix. Note : ne modifiez ni le nom ni le contenu des dossier décompréssés ! 
+
+2. Télécharger le MNT SRTM
+- Créez un compte sur le [site des produits d'Observation de la Terre de la NASA](https://urs.earthdata.nasa.gov/profile). 
+- Allez sur le site *30-Meter SRTM Tile Downloader* : https://dwtkns.com/srtm30m/ .
+- Télécharger le MNT en cliquant sur la tuile recouvrant notre zone d'étude puis décompressez le dossier le fichier dans un dossier de votre choix. 
+
+**Avez-vous réussi ?** :
+
+- Vous devriez avoir les dossiers dans votre ordinateur tels qu'indiqués dans l'image ci-dessous : 
+
+```{r, fig.cap="Dossiers contenant les produits satellites téléchargés"}
+knitr::include_graphics(rep(file.path(path_to_pic,"imagessat_folder.png")))
+```
+
+- Ouvrez le dossier `S2B_MSIL1C_20181116T103309_N0207_R108_T30PVT_20181116T160025.SAFE/GRANULE/L1C_T30PVT_A008857_20181116T104132/IMG_DATA`. Ce dossier contient les 13 bandes spectrales de l'image (B01, B02, etc.) + la bande TCI qui donne l'image en composition de couleurs réelle. Ouvrez les 14 bandes sur QGIS. 
+- Naviguez à travers les images ouvertes sur QGIS. En particulier, observez l'image TCI.
+- Chargez le MNT sur QGIS, c'est-à-dire les fichiers `N10W004.hgt` et `N11W004.hgt` du dossier dans lequel vous avez stocké le MNT.
+- Quelle est le système de projection de l'image satellite Sentinel-2? et celui du MNT ?
+- Pouvez-vous dire à quelle altitude se trouve la ville de Diébougou ? Le barage au sud de Diébougou ? 
+
+# Préparer les données pour la classification
+
+Toutes les données qui serviront à établir notre carte d'occupation du sol sont maintenant dans nos mains (ou plutôt notre ordinateur) ! Mais avant de se lancer dans la classification, il faut préparer les données afin de s'assurer que notre classification sera pertinente et performante. C'est l'objectif de cette section.
+
+## Préparer les images satellites optiques {#prepa-images-optiques}
+
+La préparation des images satellites comprend les points suivants : 
+
+- Les corrections atmosphériques et géométriques : un ensemble de traitements qui garantissent que l'image est correctement géoréférencée et que les valeurs des pixels sont des valeurs de réfléctance en Bottom of Atmosphere ;
+- Le mosaïquage des images, pour générer une image unique dans le cas où notre zone d'études est couverte par plusieurs images ;
+- Le découpage des images sur l'étendue de notre zone d'étude
+
+Dans notre cas, nous avons récupéré des images avec les propriétés suivantes (cf. section [Recueillir les produits satellitaires](#collecter-data-sat)) : 
+
+- de niveau 1C, donc, pour lesquelles les corrections l'ensemble des corrections atmosphériques et géométriques n'a pas été effectuées (rappel : ce sont les images de niveau 2A qui sont corrigées au niveau Bottom of Atmosphere) ; 
+- nous avons récupéré deux images pour recouvrir l'ensemble de notre zone d'étude ; 
+- la zone totale recouverte par l'ensemble des deux images est plus vaste que notre zone d'études
+
+Nous allons donc devoir effectuer les trois étapes de pré-traitements sus-mentionnées.
+
+**Objectifs** : 
+
+- Executer la chaine de traitement Sen2Cor pour effectuer les corrections géométriques et atmosphériques des images Sentinel-2 (passer du niveau 1C au niveau 2A) (avec l'outil `QGIS > Sen2Cor Adapter`)
+- Mosaïquer des images satellites (avec l'outil `QGIS > Raster > Fusionner`)
+- Découper des images satellites selon une emprise (avec l'outil `QGIS > Raster > Découper un raster selon une couche de masque`)
+
+**Etapes** : 
+
+1. Corrections atmosphériques et géométriques
+
+Les corrections atmosphériques et géométriques sont effectuées par la chaîne de traitement [Sen2Cor](http://step.esa.int/main/third-party-plugins-2/sen2cor/). Cette chaîne permet de passer du niveau 1C au niveau 2A pour les images Sentinel-2. Elle effectue automatiquement les corrections atmosphériques et géométriques des produits Sentinel 2 de niveau 1C. Rendez-vous sur le site de l'ESA pour plus d'informations sur Sen2Cor : http://step.esa.int/main/third-party-plugins-2/sen2cor/
+
+- Dans QGIS, cliquez sur `Raster > Sen2Cor Adapter` et ouvrer Sen2Cor Adapter ;
+- Remplissez les cases suivantes :
+  + `SEN2COR tool path` : lien vers le dossier dans votre ordinateur contenant l'application Sen2Cor (voir la section [Télécharger et installer les logiciels](#telecharger-logiciels)) ;
+  + `Input (.SAFE folder)` : lien vers le dossier `S2B_MSIL1C_20181116T103309_N0207_R108_T30PVS_20181116T160025.SAFE` comprenant l'image Sentinel-2 au niveau 1C ;
+  + `Output (optional)` : lien vers le dossier dans lequel seront stockées les images au niveau 2A qui vont être générées par Sen2Cor ;
+  + `Resolution` : séléctionnez ALL ;
+- Laissez les autres paramètres avec leurs valeurs par défaut et cliquez sur `RUN`.
+
+```{r, fig.cap="Sen2Cor sous QGIS"}
+knitr::include_graphics(rep(file.path(path_to_pic,"sen2cor_exec.png")))
+```
+
+La chaine de traitements Sen2Cor est alors lancée. Cela dure une quinzaine de minutes environ, en fonction de la puissance de calcul de votre ordinateur. En fin de traitement, les images corrigées au niveau 2A seront stockées dans le dossier `Output (optional)` que vous avez défini. 
+
+- Répétez l'opération avec l'autre image (`S2B_MSIL1C_20181116T103309_N0207_R108_T30PVT_20181116T160025.SAFE`)
+
+__*Note*__ : Nous avons présenté ici les étapes de corrections atmosphériques et radiométriques pour les images Sentinel-2. Notez que, si conceptuellement les corrections sont identiques pour toutes les images satellites, les outils que l'on utilisera dépendront la source, du capteur, etc. Ainsi dans le cas de Sentinel-2, le travail est facilité par la chaine de traitement Sen2Cor. Pour d'autres images, il faudra procéder différemment. Par exemple, si l'on désire corriger des images [SPOT6/7](https://fr.wikipedia.org/wiki/SPOT_(satellite)), Orfeo Toolbox peut faire le travail avec les algorithmes `OpticalCalibration` et `OrthoRectification`.
+
+2. Mosaïquage des images
+
+Vous avez à présent à votre disposition des images satellites de niveau 2A, c'est-à-dire, la valeur des pixels est une réflectance réelle (Bottom-of-Atmosphere) et l'image est orthorectifiée. Cependant, comme indiqué à la section [Recueillir les produits satellitaires](#collecter-data-sat), notre zone d'étude est couverte par 2 images satellites, à savoir, `S2B_MSIL1C_20181116T103309_N0207_R108_T30PVS_20181116T160025` et `S2B_MSIL1C_20181116T103309_N0207_R108_T30PVT_20181116T160025`. Il s'agit donc de mosaiquer ces images, c'est-à-dire, de les assembler pour n'en faire qu'une. 
+
+- Dans QGIS, ouvrez les bandes spectrales B02, B03, B04, B08 à 10 mètres de résolution et les bandes B05, B06, B07, B08A, B11 et B12 à 20m de résolution de l'image n°1 (`S2B_MSIL2A_20181116T103309_N0207_R108_T30PVS_20181116T160025.SAFE\GRANULE\L2A_T30PVS_A008857_20181116T104132\IMG_DATA`) et de l'image n°2 (`S2B_MSIL2A_20181116T103309_N0207_R108_T30PVT_20181116T160025.SAFE\GRANULE\L2A_T30PVS_A008857_20181116T104132\IMG_DATA`) ;
+- Ouvrez le menu QGIS `Raster > Divers > Fusionner`. Ce menu permet de fusionner (autrement dit mosaiquer) deux ou plusieurs images raster.
+- Dans la case `Couches en entrée`, cliquez sur les 3 petits points. Une fenêtre s'ouvre alors avec les 20 couches raster que vous avez ouvertes dans QGIS. Vous désirez mosaiquer les bandes 2 à 2 : la bande B02 de l'image n°1 avec la bande B02 de l'image n°2, etc. Ainsi, cochez les cases `T30PVS_20181116T103309_B02_10m` et `T30PVT_20181116T103309_B02_10m` (comme indiqué sur l'image ci-dessous) puis cliquez sur `OK`
+
+```{r, fig.cap="QGIS - menu Raster > Fusionner"}
+knitr::include_graphics(rep(file.path(path_to_pic,"qgis_menu_fusionner.png")))
+```
+
+- Dans la case `Type de données en sortie`, séléctionnez `Int32` (l'image en sortie sera ainsi moins volumnineuse)
+- Dans la case `Fusionner`, cliquez sur `enregistrer vers un fichier` puis séléctionnez un dossier dans lequel sera généré votre image mosaiquée (par exemple, `image_mosaic`) et appelez l'image en sortie `B02.TIF`
+- Cliquez sur `Executer` en bas à droite de la fenêtre pour lancer le mosaiquage.
+- Vous avez ainsi fusionné les bandes B02 des deux images satellites. Répétez alors l'opération avec les bandes B03, B04, B05, B06, B07, B08, B08A, B11, B12.
+
+3. Découpage selon l'emprise de la zone d'étude
+
+Les images à présent fusionnées couvrent une surface plus large que notre zone d'études. Or plus la surface couverte par les images est importante, plus les calculs à venir sur ces images seront longs. Nous allons donc découper notre image selon l'emprise de la zone d'étude, afin de conserver uniquement la zone qui nous intéresse. 
+
+- Dans QGIS, ouvez les 10 bandes B02, B03, B04, etc. générées à l'étape précédente (mosaiquage)
+- Ouvez également la couche `roi.gpkg` générée à l'étape de [définition de l'emprise de la région d'intérêt de notre étude](#presentation-cas-etude). 
+- Vérifiez que les couches se superposent bien et qu'elles sont dans le même système de projection (EPSG: 32630 dans notre cas), comme indiqué dans l'image ci-dessous. 
+
+```{r, fig.cap="Images satellites et région d'intérêt"}
+knitr::include_graphics(rep(file.path(path_to_pic,"roi_and_image_mosaic.png")))
+```
+
+- Aller dans le menu `Raster > Extension > Découper un raster selon une couche de masque`
+- Dans le menu déroulant `Couche source`, cliquez la bande `B02`
+- Dans le menu déroulant `Couche de masquage`, cliquez la couche `roi` (couche vectorielle de l'emprise de la zone d'étude)
+- Tout en bas, dans le menu `Découpé (masque)`, choisissez `Enregistrer vers un fichier` puis séléctionnez un dossier dans lequel sera généré votre image mosaiquée (par exemple, `image_mosaic_roi`) et appelez l'image en sortie `B02.TIF`
+- Cliquez sur `Executer` en bas à droite de la fenêtre pour lancer le découpage.
+- Vous avez ainsi découpé la bande B02. Répétez alors l'opération avec les bandes B03, B04, B05, B06, B07, B08, B08A, B11, B12.
+
+**Avez-vous réussi ?** : 
+
+- Dans QGIS, chargez les 10 bandes mosaiquées et découpées selon l'emprise de la zone d'étude, la couche de l'emprise de la zone d'étude (`vecteur/roi.gpkg`) et la couche de données de vérités terrain (`vecteur/ground_truth.shp` )
+- La couche de données des vérités terrain couvre-t-elle à peu près homogènement toute la zone d'étude ? Si ce n'est pas le cas, quelles peuvent-en être les raisons à votre avis ? 
+
+## Préparer le modèle numérique de terrain {#prepa-mnt}
+
+Les images satellite Sentinel-2 sont maintenant prêtes. Il s'agit à présent de faire les mêmes pré-traitements pour le MNT : mosaiquage et découpage selon l'emprise de la zone d'étude. 
+Cependant, notez que les images Sentinel-2 et le MNT ne sont pas projetés dans le même système de projection : les images sont en WGS84/UTM zone 30N (EPSG 32630) alors que le MNT est en WGS84 non projeté (EPSG 4326). Nous allons donc, avant de mosaiquer et découper le MNT, le reprojeter en WGS84/UTM zone 30N.
+
+**Objectifs** : 
+
+- Reprojeter le MNT (avec l'outil `QGIS > Raster > Projection`)
+- Mosaïquer le MNT (avec l'outil `QGIS > Raster > Fusionner`)
+- Découper le MNT selon une emprise (avec l'outil `QGIS > Raster > Découper un raster selon une couche de masque`)
+
+**Etapes** : 
+
+1. Reprojeter le MNT
+
+- Charger dans QGIS les 2 fichiers de MNT téléchargés à l'[étape de Téléchargement des produits satellites](#collecter-data-sat)(`N10W004.hgt` et `N11W004.hgt`)
+- Dans le menu, aller dans `Raster > Projection > Projection (warp)`
+- Dans la liste déroulante `Couche en entrée`, choisissez la couche `N10W004`
+- Dans `SCR cible`, choisissez le SCR des images satellites, c'est-à-dire EPSG 32630 : WGS84/UTM zone 30N
+- Tout en bas, dans le menu `Reprojeté`, choisissez `Enregistrer vers un fichier` puis séléctionnez un dossier dans lequel sera généré votre MNT reprojeté (par exemple, `mnt`) et appelez l'image en sortie `N10W004.TIF`
+- Cliquez sur `Executer` en bas à droite de la fenêtre pour lancer la reprojection
+- Vous avez ainsi reprojeté la tuile N10W004 du MNT. Répétez alors l'opération avec la tuile N11W004. 
+
+2. Mosaïquer le MNT
+
+Suivre la suite d'opération expliquée dans la partie précédente, section [Mosaiquage](#prepa-images-optiques)
+
+3. Découper le MNT
+
+Suivre la suite d'opération expliquée dans la partie précédente, section [Découpage selon l'emprise de la zone d'étude](#prepa-images-optiques)
+
+**Avez-vous réussi ? ** : 
+
+- Vérifiez que votre MNT final est bien projeté en EPSG 32630 : WGS84/UTM zone 30N et qu'il recouvre la zone d'étude. 
+
+# Calculer des indices spectraux et topographiques
+
+Nos images sont maintenant prêtes, et l'on pourrait à présent se lancer dans la classification. Cependant, nous allons augmenter nos chances d'obtenir une bonne classification en générant un certain nombre de couches dérivées de l'image Sentinel-2 et du MNT, qui seront ensuite intégrées dans la classification. Nous allons calculer des indices spectraux à partir de l'image satellite et des indices topographiques à partir du MNT.
+
+## Calculer des indices spectraux avec les images satellite
+
+Extrait de : https://e-cours.univ-paris1.fr/modules/uved/envcal/html/vegetation/indices/index.html et http://agritrop.cirad.fr/585651/
+
+*En télédétection, les indices font parties des méthodes de traitement que l'on appelle les transformations multispectrales. Ils consistent à convertir les luminances mesurées au niveau du capteur satellitaire en grandeurs ayant une signification dans le domaine de l'environnement.*
+
+*Basés sur le caractère multispectral des données satellitaires, ils permettent de décrire l'état d'un phénomène. Un indice de végétation par exemple, peut rendre compte du stade de croissance végétale à un moment donné.*
+
+*Tous les indices, que ce soient les indices de végétation, les indices des sols, les indices relatifs à la colonne d'eau, etc., reposent sur une approche empirique basée sur des données expérimentales. Les indices de végétation sont très utilisés d'une part, pour identifier et suivre la dynamique de la végétation, mais aussi pour estimer certains paramètres biophysiques caractéristiques des couverts végétaux, comme la biomasse, l'indice de surface foliaire, la fraction de rayonnement photosynthétique actif, etc.*
+
+*Les indices spectraux sont obtenus à partir d’équations appliquées à la valeur des pixels dans bandes différentes, dans le but de tirer profit des particularités du comportement radiométrique de différents types d’objets. Par exemple le NDVI (indice normalisé de végétation) utilise la haute réflectance de la végétation dans le proche infrarouge et sa basse réflectance dans le rouge ; plus dense et vigoureuse est la végétation, plus cette tendance s’accentue.*
+
+Il existe de très nombreux indices spectraux, qui ont été développés au cours du temps par les scientifiques et utilisateurs des images satellites optiques. Vous pouvez en trouver une liste assez complète sur [ce site](https://www.indexdatabase.de/db/i.php).
+
+Le choix des indices à générer dans le cadre d'une classification d'occupation du sol dépend des classes que l'on souhaite discriminer. Ainsi, on peut s'attendre par exemple à ce que la classe 'eau' soit particulièrement bien discriminée par un indice de présence d'eau. Dans notre cas, nous allons intégrer 6 indices, dont les noms et equations sont donnés dans le tableau suivant :
+
+
+|    Indice                                           |   Type | Equation     |
+| :-------------------------------------------------- | :-------------: | :-------------: |
+| **NDVI** (Normalized Difference Vegetation Index)       | Vegetation  |  $\frac{NIR - R}{NIR + R}$   |
+| | |
+| **BRI** (Brillance du sol)   |  Sol | $\sqrt{\frac{R^2}{2 \times G^2}}$     |
+| | |
+| **NDWI** (Normalized Difference Water Indice)  | Eau  | $\frac{G - NIR}{G + NIR}$     |
+| | |
+| **MNDWI** (Modified Normalized Difference Water Indice)      |  Eau | $\frac{NIR - SWIR}{NIR + SWIR}$   |
+| | |
+| **NDBI** (Normalized Difference Built-up Index)      |  Bâti | $\frac{SWIR - NIR}{SWIR + NIR}$   |
+
+Pour rappel, les bandes spectrales du satellite Sentinel-2 sont les suivantes : 
+
+```{r, fig.cap="Caractéristiques des bandes spectrales de Sentinel-2"}
+knitr::include_graphics(rep(file.path(path_to_pic,"S2_bands.png")))
+```
+
+**Objectifs** :
+
+- Calculer des indices spectraux (avec l'outil `QGIS > Raster > Calculatrice Raster`)
+
+**Etapes** : 
+
+- Chargez dans QGIS les 10 bandes spectrales générées à l'étape précédente (images mosaiquées et découpées selon l'emprise de la zone d'étude) ;
+- Dans le menu, allez dans `Raster > Calculatrice Raster`
+- Utilisez les tableaux ci-dessus (formules des indices spectraux et tableau des bandes spectrale de Sentinel-2) pour calculer chaque indice spectral du tableau à l'aide de la calculatrice raster, comme indiqué sur l'image ci-dessous
+- Enregistrez chaque indice dans un dossier de votre choix (par exemple, `indices_spectraux`) et donnez au fichier raster généré le nom de l'indice en question
+
+```{r, fig.cap="Calculatrice raster - calcul d'indices spectraux"}
+knitr::include_graphics(rep(file.path(path_to_pic,"raster_calculator.png")))
+```
+
+www.gisresources.com/ndvi-ndbi-ndwi-ranges-1-1/
+
+**Avez-vous réussi ?** :
+
+- Quelle est la valeur du NDVI au niveau des bas-fonds ? du barrage ? 
+- De même pour le NDWI. 
+
+## Calculer des indices topographiques avec le MNT
+
+Nous allons utiliser le MNT pour dériver des indices topographiques. Pour rappel, le MNT donne la valeur de l'altitude en tout point de l'espace (pour le MNT SRTM que l'on utilise : sur une grille de 30m x 30m de résolution). A partir de la valeur de l'altitude en un pixel donné et des valeurs dans les pixels adjacents, nous pouvons calculer de nombreux indices de terrain : pente, orientiation, accumulation de flux, etc. Cela sera utile pour discriminer certaines classes : par exemple, dans notre région les zones humides se trouvent dans les zones où l'altitude et la pente sont faibles, et où l'accumulation de flux est importante.
+
+**Objectifs** :
+
+- Calculer des indices topographiques de pente et d'aspect (avec l'outil `Grass > r.slope.aspect`)
+- Calculer des indices topographiques d'accumulation de flux (avec l'outil `Grass > r.terraflow`)
+
+**Note importante** :
+
+Veillez à utiliser la version de QGIS `QGIS Desktop 3.10.0 with GRASS 7.6.1` (et non `QGIS Desktop 3.10.0`) pour cette étape.
+
+**Etapes** : 
+
+1. Calcul de la pente et de l'orientation
+
+- Charger dans QGIS la couche `mnt_mosaic_roi.tif` générée dans la section [Préparer le Modèle numérique de terrain](#prepa-mnt)
+- Dans la boite à outils de traitements, recherchez l'algorithme `r.slope.aspect` de GRASS et l'ouvrir
+- Dans la case `Elevation`, séléctionnez le MNT
+- Dans les cases `Pente` et `Exposition`, saisissez respectivement les chemins de sortie vers les fichiers de pente, orientation et courbature qui vont être générés par l'algorithme, comme indiqué sur la figure ci-dessous. 
+- Pour tous les autres paramètres (`Profile curvature`, `Courbe tangentielle`, etc.), séléctionnez `Ignorer la sortie`
+- Cliquez sur `Executer` pour lancer l'algorithme
+
+```{r, fig.cap="Algorithme r.slope.aspect de GRASS"}
+knitr::include_graphics(rep(file.path(path_to_pic,"grass_slope_aspect.tif")))
+```
+
+2. Calcul de l'accumulation de flux
+
+- Dans la boite à outils de traitements, recherchez l'algorithme `r.terraflow` de GRASS et l'ouvrir
+- Dans la case `Nom de la carte d'élévation raster`, séléctionnez le MNT
+- Dans la case `Flow accumulation`, saisissez le chemins de sortie vers le fichier d'accumulation, comme indiqué sur la figure ci-dessous
+- Cliquez sur `Executer` pour lancer l'algorithme
+
+```{r, fig.cap="Calculatrice raster - calcul d'indices spectraux"}
+knitr::include_graphics(rep(file.path(path_to_pic,"grass_accumulation.tif")))
+```
+
+**Avez-vous réussi ?** :
+
+- Quelle est la valeur de la pente des bas-fonds ? du barrage ? 
+- Même question pour l'accumulation de flux
+
+# Classer les images pour cartographier l'occupation du sol
+
+Nos données sont maintenant prêtes. Nous allons utiliser un algorithme de classification nommé "Random Forest" pour générer notre carte d'occupation du sol en réalisant une classification supervisée par pixel. 
+
+Le court texte qui suit est extrait et adapté de http://perso.ens-lyon.fr/lise.vaudor/classification-par-forets-aleatoires/ et explique succintement le fonctionnement des Random Forest : 
+
+*Random forest est un algorithme d’apprentissage supervisé basé sur la génération d’arbres décisionnels. Random forest génère un nombre n d’arbres décisionnels à partir des données d’apprentissage. Ces arbres se distinguent les uns des autres par le sous-échantillon de données sur lequel ils sont entraînés. Ces sous-échantillons sont tirés au hasard dans le jeu de données initial.*
+
+*Chaque arbre de la forêt est construit sur une fraction aléatoire ("in bag") des données (c'est la fraction qui sert à l'entraînement de l'algorithme)*, [et utilise une fraction aléatoire des descripteurs pour réaliser la segmentation des arbres]. *Pour chacun des individus de la fraction de données restante ("out of bag") l'arbre peut prédire une classe.*
+
+Nous utiliserons l'algorithme *Random Forest Classification* de la librairie SAGA pour réaliser et valider notre classification. Dans un premier temps, nous allons séparer notre jeu de données de vérités terrain (généré dans la section [Recueillir les données terrain](#recueil_donnees_terrain)) en un jeu de données pour entraîner le modèle (*données d'entraînement*) et un jeu de données pour le valider (*données de validation*). Nous allons utiliser 80% des parcelles de chaque classe d'occupation du sol pour consituer le jeu de données d'entraînement et le reste (20%) pour le jeu de données de validation. Puis nous allons générer notre classification avec Random Forest en utilisant les 18 couches raster et le jeu de données d'entrainement. Enfin nous allons évaluer la qualité de notre classification avec le jeu de données de validation.  
+
+**Objectifs** :
+
+- Créer un jeu de données d'entraînement et un jeu de données de validation à partir des données terrains (avec l'outil `Saga > Split Shapes Layer randomly`)
+- Réaliser une classification supervisée en utilisant l'algorithme Random Forest (avec l'outil `Saga > Random Forest Classification (OpenCV)`)
+- Valider une classification avec la matrice de confusion (avec l'outil `Saga > Confusion Matrix (Polyon / Grid)`)
+
+**Note importante** :
+
+Nous allons utiliser des algorithmes de la librairie SAGA pour réaliser la classification. En principe, la librairie SAGA est disponible sur QGIS, via la boite à outils de traitements. Cependant, pour une raison inconnue, il s'est avéré impossible lors de la préparation de ce tutoriel d'executer les traitements SAGA via QGIS sous le système d'exploitation Windows. Nous allons donc réaliser la classification à travers l'interface utilisateur de  SAGA. 
+
+**Etapes**
+
+1. Aligner les résolutions et étendues des différentes couches qui serviront à la classification
+
+L'algorithme `Random Forest Classification (OpenCV)` de SAGA requiert que les couches raster qui serviront à la classification soient de résolution et étendue identiques. Dans notre cas, nous avons des couches de résolutions spatiales différentes (10 m et 20 m pour les images satellites et les indices spectraux, 30 m pour le MNT et les indices topographiques). Nous allons donc aligner les résolutions avant de lancer la classification. Notez que lorsque le classification est lancée via la librairie SAGA dans QGIS directement, cette étape est automatiquement réalisée par l'algorithme avant la classification, il n'est donc pas nécéssaire de la réaliser à la main comme nous allons le faire ici.
+
+- Chargez dans QGIS l'ensemble des couches qui seront utilisées pour la classification (les 10 bandes spectrales, les 5 indices spectraux, le MNT, les 2 indices topographiques)
+- Dans le menu, allez dans `Raster > Aligner les rasters`
+- Cliquez sur le `+`
+- Dans `Couche raster d'entrée`, choisissez `B02`
+- Dans `Nom de fichier du raster en sortie`, saisissez le chemin de sortie de la couche qui sera redimensionné, comme indiqué sur l'image ci-dessous
+
+```{r, fig.cap="QGIS - menu Aligner rasters"}
+knitr::include_graphics(rep(file.path(path_to_pic,"aligner_rasters.png")))
+```
+
+- Répétez l'opération avec l'ensemble des couches
+- Dans le menu `Couche de référence`, séléctionnez `B02 (meilleures référence)`
+- Cliquez sur OK pour lancer le traitement. Les couches sont alors redimensionnées et stockées dans l'ordinateur. 
+
+2. Créer un jeu de données d'entraînement et de validation
+
+- Ouvrir le logiciel SAGA.
+- Chargez les vérités terrain : cliquez sur `File > Open`, séléctionnez "all files" dans la liste déroulante en bas de la fenêtre, et séléctionnez le fichier `ground_truth.shp`
+- Dans le menu, allez dans `Geoprocessing > Shapes > Construction > Split Shapes Layer Randomly`
+- Remplissez les menus comme dans l'image ci-dessous : 
+
+```{r, fig.cap="SAGA - Split shapes"}
+knitr::include_graphics(rep(file.path(path_to_pic,"saga_split_shape.png")))
+```
+
+- SAGA sépare alors le jeu de deonnées `ground_truth.shp` en deux jeux distincts : 
+  + `ground_truth [80%]` qui représentera le jeu de données d'entrainement de notre modèle de classification
+  + `ground_truth [20%]` qui représentera le jeu de données de validation de notre modèle de classification
+
+3. Réaliser la classification supervisée
+
+- Dans Saga, chargez les 18 couches raster qui serviront à la classification : cliquez sur `File > Open`, séléctionnez "all files" dans la liste déroulante en bas de la fenêtre, et allez dans le dossier dans lequel sont stockées vos images (redimensionnées à l'étape 1)
+- Dans le menu, allez dans `Geoprocessing > Imagery > Classification > Machine Learning > Random forest classification (OpenCV)`
+- Remplissez les menus comme dans l'image ci-dessous : 
+
+```{r, fig.cap="SAGA - Classer avec Random forest"}
+knitr::include_graphics(rep(file.path(path_to_pic,"saga_rf_classif.png")))
+```
+
+- Cliquez sur `Okay` pour lancer la classification. A la fin du processus, la couche `Random forest classification (OpenCV)` est créée.
+
+4. Valider la classification
+
+L'étape de validation a pour objectif d'évaluer la qualité de notre classification. Nous allons utiliser notre jeu de données de validation pour compter le nombre de pixels correctement classés dans notre classification finale.
+
+- Dans le menu de SAGA, allez dans `Geoprocessing > Imagery > Classification > Confusion Matrix (Polygons / Grid)`
+- Remplissez les menus comme dans l'image ci-dessous : 
+  
+```{r, fig.cap="SAGA - Créer la matrice de confusion"}
+knitr::include_graphics(rep(file.path(path_to_pic,"saga_rf_validation.png")))
+```
+
+- Cliquez sur `Okay` pour lancer la validation. A la fin du processus, les tables `Confusion Matrix`, `Class Values` et `Summary` sont créées.
+
+5. Sauvegarder la classification et les indices de classification
+
+- Dans le panneau `Data` à gauche, cliquez-droit sur la couche "Random Forest Classification (OpenCV)" puis sur `Save as`. Sauvez la couche dans le repértoire de votre choix. La couche est enregistrée dans un format raster lisible par QGIS. 
+- Faites de même pour les matrices de confusion "Confusion matrix". Les matrices sont enregistrées au format txt.
+
+**Avez-vous réussi ?** :
+
+- Quelle est la valeur du coefficient Kappa de votre modèle de classification ?
+- Selon la matrice de confusion, quelles sont les classes les mieux classées ? Les moins bien classées ? Quelles classes se confondent le plus entre elles ? A votre avis, pourquoi ?
+- Ouvrez le raster contenant la sortie de la classification dans QGIS
+- Attribuez lui une symbologie pertinente (classe "eau permanente" en couleur bleue, etc) et faites-en une carte (avec titre, échelle, etc) avec le composeur d'impression de QGIS
+
+# Note finale et notions non abordées
+
+Vous avez généré votre première carte d'occupation du sol, félicitations ! Que faire avec maintenant ? Dans le cadre de notre étude fictive sur la caractérisation des habitats favorables aux vecteurs du paludisme (voir la section [Présentation du cas d'études](#presentation-cas-etude)), vous pourriez maintenant l'utiliser pour extraire les surfaces relatives de chaque classe d'occupation du sol au voisinage des villages (par exemple, dans une zone tampon de 2 km), ou bien d'autres [métriques paysagères](http://www.umass.edu/landeco/research/fragstats/documents/Conceptual%20Background/Landscape%20Metrics/Landscape%20Metrics.htm) pertinentes. En croisant cette information avec les données issues de comptages de vecteurs, vous pourriez alors tenter d'expliquer les habitats favorables à la présence et abondance des vecteurs.
+
+Ce tutoriel ne fait qu'effleurer les possibilités offertes par la télédétection spatiale, et nombre de domaines n'ont pas été abordés... Par exemple, le traitement des zones sous nuages est essentiel. On peut utiliser d'autres images satellites, prises à des dates proches, pour combler les zones sous nuages et ombres de nuages sur notre image principal. Pour améliorer la qualité de la classification, on pourrait procéder de plusieurs manières, par exemple : 
+
+- en post-classification : appliquer des méthodes de filtrage de traitement d'image, par exemple un filtre majoritaire avec l'outil `SAGA > Majority filter`, pour atténuer l'effet "poivre et sel" ;
+- paramétriser plus finement l'algorithme de classification (Random Forest), ou tester d'autres algorithmes de classification ;
+- réaliser une classification par [approche orientée objet](http://theses.univ-lyon2.fr/documents/getpart.php?id=lyon2.2008.lejot_j&part=150230) ;
+- intégrer davantages/d'autres variables explicatives, par exemple, des textures.
+
+Vous noterez aussi à travers ce tutoriel que la télédétection implique un nombre d'étapes important. Afin de rendre l'ensemble du processus transparent et reproductible, il peut être intéressant d'utiliser des outils dédiés, par exemple le [Modeleur graphique de QGIS](https://docs.qgis.org/2.14/fr/docs/user_manual/processing/modeler.html). Mieux encore, pour les utilisateurs de langages de programmation tels `Python` ou `R`, vous pourriez scripter l'ensemble des traitements. Toutes les librairies utilisées dans ce tutoriel (SAGA, GRASS, GDAL, etc.) existent sous R par exemple, et bien davantage encore. Vous pouvez tirer profit des capacités de ces logiciels à réaliser des figures et autres graphiques pour systématiser la production de sortie graphiques ou cartographiques, tester plusieurs modèles, etc. 
+
+# Annexe 1 : Télécharger, installer et configurer les logiciels et extensions {#telecharger-configurer-logiciels}
+
+Avant de travailler sur nos images, il faut installer les logiciels qui nous permettent de le faire... et dans le monde des logiciels libres et gratuits, cette étape n'est pas à négliger ! Elle peut représenter une part significative du temps de travail... (eh oui, ça fait partie des petits défauts des logiciels libres, ils ne sont pas toujours ausssi simples à installer que les logiciels propriétaires...!) 
+
+## Télécharger et installer les logiciels {#telecharger-logiciels}
+
+Nous utiliserons les logiciels [QGIS](https://www.qgis.org/fr/site/index.html), [SAGA GIS](http://www.saga-gis.org/en/index.html) et [Orfeo Toolbox](https://www.orfeo-toolbox.org) au cours de cette formation. 
+
+Nous utiliserons également la chaîne de traitement [Sen2cor](http://step.esa.int/main/third-party-plugins-2/sen2cor/) qui permet de faire les pré-traitements des images Sentinel 2 de niveau 1C (corrections atmosphériques et géométriques) pour les amener au niveau 2A,  ainsi que l'extension QGIS [Sen2Cor Adapter](https://plugins.qgis.org/plugins/sen2cor_adapter/) qui permet d'intégrer cette chaine de traitement dans l'interface de QGIS.
+
+**Objectifs** : Installer les logiciels et extensions qui serviront pendant la formation
+
+**Etapes** : 
+
+- Téléchargez et installez le logiciel [QGIS (v3.10)](https://www.qgis.org/fr/site/forusers/download.html) (attention à choisir la bonne version, 32 bits ou 64 bits)
+- Téléchargez le logiciel [SAGA (v7.4.0)](https://sourceforge.net/projects/saga-gis/files/).
+<!---- - Téléchargez le logiciel [OTB (v7.0)](https://www.orfeo-toolbox.org/). -->
+- Téléchargez la chaîne de traitement [Sen2cor (v2.5.5)](http://step.esa.int/main/third-party-plugins-2/sen2cor/sen2cor_v2-5-5/) (sous forme de fichier compressé .zip) (*attention : ne pas télécharger la dernière version v2.8 mais bien la version v2.5.5*). Notez le lien en local vers le fichier .zip pour l'étape suivante. Attention : Sen2Cor est disponible sous Windows uniquement en 64 bits.
+- Téléchargez l'extension [Sen2Cor Adapter](https://plugins.qgis.org/plugins/sen2cor_adapter/) de QGIS (sous forme de fichier compressé .zip) et notez le lien en local vers le fichier .zip pour l'étape suivante.
+
+**Avez-vous réussi ?** 
+
+- Ouvrez QGIS sur votre ordinateur. La fenêtre suivante doit apparaître : 
+
+```{r, fig.cap="QGIS - fenêtre d'accueil"}
+knitr::include_graphics(rep(file.path(path_to_pic,"qgis_empty.png")))
+```
+
+- Ouvrez SAGA GIS sur votre ordinateur. La fenêtre suivante doit apparaître : 
+
+```{r, fig.cap="SAGA GIS - fenêtre d'accueil"}
+knitr::include_graphics(rep(file.path(path_to_pic,"saga_empty.png")))
+```
+
+## Configurer les applications tierces et plugins dans QGIS {#configurer-logiciels}
+
+QGIS dispose d'un ensemble de traitements (algorithmes) qui sont installés par défaut avec le logiciel. Les opérations spatiales classiques sur les données géographiques vecteur et raster sont assurées par cette bibliothèque de traitements. Cependant, en télédétection, nous utilisons des algorithmes complexes qui ne sont pas disponibles dans la version de base de QGIS. La bonne nouvelle, c'est qu'ils sont disponibles gratuitement via d'autre logiciels ou bibliothèques SIG libres et gratuites, et qu'ils peuvent être incorporés dans QGIS (ainsi, pas besoin de passer sans cesse d'un logiciel à l'autre). La moins bonne nouvelle, c'est que l'intégration de ces logiciels/bibliothèques dans QGIS demande un peu de travail de configuration. C'est l'objectif de cette section : intégrer les logiciels et bibliothèques de traitements tiers dans QGIS.
+
+QGIS offre deux moyens d'intégrer des applications tierces : 
+
+- Intégrer des bibliothèques de traitement développées en dehors de QGIS. Ces bibliothèques de traitement sont développés dans un contexte complètement externe à QGIS (par exemple par l'armée américaine, ou bien le Centre National d'Etudes Spatiales français), et existent parfois depuis plus longtemps même que QGIS. Il s'agit de [SAGA](http://www.saga-gis.org/en/index.html), [GRASS](http://www.saga-gis.org/en/index.html), [GDAL](https://gdal.org/) et [OTB](https://www.orfeo-toolbox.org). Ces bibliothèques peuvent être téléchargées et exécutées en dehors de QGIS (en tant que logiciel proprement dit) mais il est possible de les intégrer directement dans l’interface graphique QGIS. Les librairies SAGA, GDAL et GRASS sont automatiquement disponibles et configurées dans QGIS. Il faut par contre configurer OTB. 
+- Installer des extensions QGIS. Ces extensions sont aussi appelées *plugins* en anglais. Les plugins sont des librairies de codes Python développées par les utilisateurs de QGIS et mis à disposition de tous. Ces extensions permettent d'executer des traitements variés, qui ne sont pas présents dans les algorithmes de base de QIGS. Les plugins sont dotés d'une interface graphique qui permet d"executer les algorithmes sans avoir à "mettre les mains" dans le code Python. 
+
+**Objectifs** : Configurer les application tierces dans QGIS
+
+**En savoir plus** : https://docs.qgis.org/3.4/fr/docs/user_manual/processing/3rdParty.html
+
+**Etapes** : 
+<!----
+1. Intégrer OTB dans QGIS en suivant les instructions suivantes :  
+- Décompressez l'archive OTB téléchargée en section [Télécharger les logiciels et plugins ](#telecharger-logiciels) dans un dossier de votre choix sur votre ordinateur (attention : veillez à ce que le chemin vers le dossier décompressé ne comporte pas d’espace, c’est à dire, pas de *C:/Dossier OTB/...* mais plutôt *C:/Dossier_OTB/...*)
+- Ouvrez QGIS, et allez dans `Préférences > Options > Traitements > Fournisseurs de traitements > OTB` puis : 
+  + Remplissez les cases `Répertoire des applications OTB` et `Répertoire OTB` comme indiqué sur l’image ci-dessous avec les liens dans lesquels vous avez décompréssé l'archive OTB en section [Télécharger les logiciels et plugins ](#telecharger-logiciels) ;
+  + Cochez la case `Activer` comme indiqué sur l’image ci-dessous.
+
+```{r, fig.cap="Configuration d'OTB dans QGIS"}
+knitr::include_graphics(rep(file.path(path_to_pic,"qgis_conf_otb.png")))
+```
+
+
+2. --> Intégrer Sen2cor Adapter dans QGIS
+
+- Dans QGIS, allez dans `Extensions > Installer/gérer les extensions > Installer depuis un ZIP`
+- Dans la case `Fichier ZIP`, allez chercher le lien vers le fichier compressé Sen2Cor Adapter téléchargé en section [Télécharger les logiciels et plugins ](#telecharger-logiciels) puis cliquer sur `Installer le plugin`
+
+```{r, fig.cap="Configuration de l'extension Sen2Cor Adapter dans QGIS"}
+knitr::include_graphics(rep(file.path(path_to_pic,"qgis_conf_otb.png")))
+```
+
+**Avez-vous réussi ?**
+<!----
+- Vérifiez qu'OTB a bien été intégré dans QGIS en ouvrant QGIS puis en cliquant sur `Traitements > Boîte à outils`. La boîte à outils apparaît alors à droite de l'écran. En bas de celle-ci, vous devriez alors voir les outils 'GDAL', 'GRASS', 'OTB', 'SAGA' comme indiqué sur la capture d’écran ci-dessous :
+
+```{r, fig.cap="Boite à outils OTB dans QGIS", out.height="40%"}
+knitr::include_graphics(rep(file.path(path_to_pic,"qgis_otb_available.png")))
+```
+--> 
+
+- Vérifiez que le plugin Sen2Cor Adapter a bien été installé en ouvrant QGIS puis en allant dans `Raster` et en vérifiant que l'option `Sen2cor Adapter` est bien disponible. Ouvrez `Sen2cor Adapter`. L'écran suivant doit apparaître : 
+
+```{r, fig.cap="Extension Sen2Cor Adapter dans QGIS"}
+knitr::include_graphics(rep(file.path(path_to_pic,"qgis_sen2cor_available.png")))
+```
+
+<!---- # Annexe 2 : Collecter les vérités terrain sur tablette avec Qfield pour QGIS {#annexe-qfield} -->
+
+# Annexe 2 : Identifier et télécharger des produits satellitaires {#annexe-prod-sat}
+
+<!----
+Il existe pléthore de produits satellitaires, et il n'est pas toujours évident de se retrouver dans cette jungle ... Dans cette annexe, nous présentons quelques produits satellitaires et détaillons leurs caractéristiques, et nous donnons quelques liens permettant de visualiser et/ou télécharger ces produits. A vous de fouiller le web pour trouver davantage ! 
+
+## Satellites optiques et produits d'observation de la Terre
+
+### Programme Landsat
+
+Le programme Landsat, administré par l'Agence Spatiale Américaine, est le plus ancien programme d'observation "de routine" de la Terre. Landsat-1, premier satellite du programme, a été lancé le 23 juillet 1972 et depuis, 7 autres satellites ont été mis en orbite. Aujourd'hui, Landsat-7 et Landsat-8 sont encore opérationnels. Ces deux satellites receuillent les données dans 11 bandes spectrales, du visible au moyen infrarouge, avec des résolutions spatiales de 15 mètres en panchromatique et 30 mètres en multispectral. La période de revisite de Landsat-8 est de 16 jours. Les données sont libres d'accès et téléchargeables sur le [portail des données d'observation de la Terre de la NASA](https://search.earthdata.nasa.gov/).
+
+### Programme Sentinel
+
+Le programme Sentinel est administré par l'Agence Spatiale Européenne.  (https://scihub.copernicus.eu/)
+
+
+### Données MODIS
+
+### Autre programmes (images payantes)
+
+SPOT
+
+
+## Interfaces web pour visualiser des données en ligne avant de les télécharger
+-->
+
+Les portails web listés ci-dessous permettent de visualiser des images satellites sans avoir à les télécharger. Cela peut-être intéressant de les consulter pour, par exemple, évaluer la qualité d'une image satellite avant de la télécharger (afin d'identifier précisément les zones sous nuages), visualiser des indices spectraux (NDVI, NDWI, etc.) ou encore s'informer sur les produits satellites existants.
+
+1. [**Sentinel-hub EO-Browser**](https://apps.sentinel-hub.com/) pour les données des missions Sentinel de l'ESA (Sentinel-1, Sentinel-2, Sentinel-3, Sentinel-5P) 
+
+Disponible à l'adresse suivante : https://apps.sentinel-hub.com/
+
+Le Sentinel-hub EO-Browser permet de visualiser les données des missions Sentinel de l'Agence Spatiale Européenne (Sentinel-1, Sentinel-2, Sentinel-3, Sentinel-5P à ce jour). L'utilisateur a la possibilité de filtrer sa recherche par source de données (mission Sentinel), date d'acquisition de l'image et zone géographique. Les produits disponibles sont alors proposés pour visualisation. L'utilisateur peut choisir la composition de bandes parmi une vaste panoplie compositions disponibles pour chaque source (par exemple pour Sentinel-2 : couleurs réelles, NDVI, NDWI, SAVI, etc.). 
+
+Les produits Sentinel sont téléchargeables en utilisant le [Copernicus Open Access Hub](https://scihub.copernicus.eu/) disponible à l'adresse suivante : https://scihub.copernicus.eu/.
+
+```{r, fig.cap="Sentinel-hub EO-Browser - image Sentinel-2 en couleurs réelles sur l'aire de Diébougou"}
+knitr::include_graphics(rep(file.path(path_to_pic,"sentinel_hub_eo_browser.png")))
+```
+
+2. [**NASA EOSDIS Worldview**](https://worldview.earthdata.nasa.gov) pour les données de la NASA
+
+Disponible à l'adresse suivante : https://worldview.earthdata.nasa.gov
+
+Le portail EOSDIS Worldview de la NASA permet de visualiser nombre de jeux de données d'observation de la Terre générés par l'agence spatiale américaine (MODIS, SMAP, VIIRS, etc.). L'interface permet de séléctionner la couche à visualiser et de filtrer spatialement et temporellement (grâce à une barre intuitive) les jeux de données. Il est possible, comme dans un SIG bureau, de superposer des couches, de leur apporter de la transparence ou encore de régler la palette de couleurs utlisée. Il est aussi possible d'exporter de courtes vidéos montrant l'évolution d'une série temporelle.
+
+Les données d'observation de la Terre de la NASA sont pour la pluspart libres d'accès et téléchargeables sur le [portail des données d'observation de la Terre de la NASA](https://search.earthdata.nasa.gov/) disponible à l'adresse suivante : https://search.earthdata.nasa.gov/ .
+
+```{r, fig.cap="NASA Worldview - image SMAP (humidité du sol) au dessus du Burkina Faso"}
+knitr::include_graphics(rep(file.path(path_to_pic,"nasa_worldview.png")))
+```
+
+3. [**Google Earth Engine**](https://developers.google.com/earth-engine/datasets) pour une très large panoplie de données d'observation de la Terre
+
+Disponible à l'adresse suivante : https://developers.google.com/earth-engine/datasets
+
+Le projet Google Earth Engine (GEE) est mené par Google. L'initiative a été motivée par le constat que la diversité des sources et des formats des données d'observation de la Terre générées par les divers organismes partout dans le monde est un frein aujourd'hui à leur utilisation et leur analyse conjointe. L'objectif de GEE est de centraliser un ensemble de jeux de données d'observation de la Terre provenant de très nombreuses sources (NASA, ESA, etc.) et couvrant des thématiques variées (climatologie, imagerie, géophysique, etc.). Ainsi, les données des missions Landsat, MODIS, Sentinel, etc. sont toutes disponibles via GEE. L'interface propose une manière commune à tous les jeux de données pour les visualiser en ligne, les télécharger, les croiser, effectuer des analyses spatiales. Par ailleurs, les éventuels traitements de données définis par les utilisateurs sont effectués sur les serveurs de Google, rendant ainsi les calculs particulièrement rapides (comparé à un traitement en local) sur des jeux de données volumineux.
+
+```{r, fig.cap="Google Earth Engine - image MODIS LST (température du sol) sur l'aire de Diébougou"}
+knitr::include_graphics(rep(file.path(path_to_pic,"google_earth_engine.png")))
+```
+
+
+<a rel="license" href="http://creativecommons.org/licenses/by-nc/4.0/"><img alt="Licence Creative Commons" style="border-width:0" src="https://i.creativecommons.org/l/by-nc/4.0/88x31.png" /></a><br />Ce(tte) œuvre est mise à disposition selon les termes de la <a rel="license" href="http://creativecommons.org/licenses/by-nc/4.0/">Licence Creative Commons Attribution - Pas d’Utilisation Commerciale 4.0 International</a>.

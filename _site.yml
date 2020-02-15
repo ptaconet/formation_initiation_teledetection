@@ -1,8 +1,5 @@
 name: "my-website"
+output_dir: docs
+exclude: ["^data2$","formation_teledec.pdf","my_header.tex","formation_teledec.Rmd"]
 navbar:
   title: "My Website"
-  left:
-    - text: "Home"
-      href: index.html
-    - text: "About"
-      href: about.html
