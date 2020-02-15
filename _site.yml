@@ -1,5 +1,5 @@
 name: "my-website"
 output_dir: docs
-exclude: ["^data2$","formation_teledec.pdf","my_header.tex","formation_teledec.Rmd"]
+exclude: ["^data2$","formation_teledec.pdf","my_header.tex","README.md"]
 navbar:
-  title: "My Website"
+  title: ""
