@@ -15,6 +15,8 @@ Plus spécifiquement, nous utilisons les logiciels et librairies suivantes :
 
 Les images satellites manipulées sont des produits Sentinel-2 au niveau 1C ainsi que le modèle numérique de terrain Shuttle Radar Topography Mission (SRTM). Ces produits sont en libre accès et disponibles sur l’ensemble de la surface terrestre.
 
+Les données nécessaires à la realisation des travaux sont disponibles à l'adresse suivante : https://zenodo.org/record/7224864#.Y_i_YR7fs0M 
+
 Prérequis pour aborder sereinement le document: concepts de bases en SIG et télédétéction, utilisation basique de QGIS (ouvrir et manipuler des données vectorielles et rasterisées sur QGIS)
 
 Mots clés : télédétéction spatiale, Sentinel 2, occupation du sol, classification supervisée orientée pixel
