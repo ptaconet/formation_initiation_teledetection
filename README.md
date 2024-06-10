@@ -25,7 +25,11 @@ Mots clés : télédétéction spatiale, Sentinel 2, occupation du sol, classifi
 
 **Note importante n°2** : Les jeux de données mentionnées dans ce tutoriel sont fournies aux personnes formées. Afin de contrôler si les données générées aux différentes étapes du tutoriel sont conformes à ce qui est attendu, l’ensemble des données intermédiaires est également fourni.
 
-**Liens :**
+# Citation
+
+Paul Taconet. (2022, octobre 19). Tutoriel d'initiation à la télédétection spatiale sur logiciel libre. Zenodo. https://doi.org/10.5281/zenodo.7224864
+
+# Liens utiles
 
 * Rmd : https://github.com/ptaconet/formation_initiation_teledetection/blob/master/_formation_teledec.Rmd
 * pdf : https://github.com/ptaconet/formation_initiation_teledetection/blob/master/formation_teledec.pdf
