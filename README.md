@@ -1,9 +1,9 @@
-# Tutoriel d'initiation à la télédétection sur logiciel libre
+# Formation d'initiation à la télédétection sur logiciel libre
 
 <!-- badges: start -->
 <!-- badges: end -->
 
-Ce document est un tutoriel d’initiation à la manipulation d’images satellites d’observation de la Terre. L’objectif est de fournir quelques clés pour appréhender ce type de données sur des logiciels informatiques dédiés libres et à code source ouverts (free and open source software), via un cas d’utilisation classique en télédétéction spatiale : la cartographie l’occupation/utilisation du sol.
+Ce document est un support pédagogique d’initiation à la manipulation d’images satellites d’observation de la Terre. L’objectif est de fournir quelques clés pour appréhender ce type de données sur des logiciels informatiques dédiés libres et à code source ouverts (free and open source software), via un cas d’utilisation classique en télédétéction spatiale : la cartographie l’occupation/utilisation du sol.
 
 Nous proposons d’utiliser le logiciel QGIS comme interface principale de visualisation des données et de paramétrisation des algorithmes, tout en “augmentant” ses fonctionnalités de base grâce à sa capacité à intégrer de nombreuses librairies spatiales externes.
 
