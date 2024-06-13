@@ -1,7 +1,6 @@
 # Formation d'initiation à la télédétection sur logiciel libre
 
-<!-- badges: start -->
-<!-- badges: end -->
+## Présentation de la ressource pédagogique
 
 Ce document est un support pédagogique d’initiation à la manipulation d’images satellites d’observation de la Terre. L’objectif est de fournir quelques clés pour appréhender ce type de données sur des logiciels informatiques dédiés libres et à code source ouverts (free and open source software), via un cas d’utilisation classique en télédétéction spatiale : la cartographie l’occupation/utilisation du sol.
 
@@ -23,16 +22,16 @@ Mots clés : télédétéction spatiale, Sentinel 2, occupation du sol, classifi
 
 **Note importante n°2** : Les jeux de données mentionnées dans ce tutoriel sont fournies aux personnes formées. Afin de contrôler si les données générées aux différentes étapes du tutoriel sont conformes à ce qui est attendu, l’ensemble des données intermédiaires est également fourni.
 
-# Liens vers la ressource pédagogique
+## Liens vers la ressource pédagogique
 
 La ressource pédagogique (incluant les données nécessaires pour l'exercice) se trouve au lien suivant : https://doi.org/10.5281/zenodo.7224864
 
 Site internet : https://ptaconet.github.io/formation_initiation_teledetection/
 
-# Citation
+## Citation
 
 Paul Taconet. (2022, octobre 19). Support pédagogique : initiation à la télédétection spatiale sur logiciel libre. Zenodo. https://doi.org/10.5281/zenodo.7224864
 
-# License
+## License
 
 <a rel="license" href="http://creativecommons.org/licenses/by-nc/4.0/"><img alt="Licence Creative Commons" style="border-width:0" src="https://i.creativecommons.org/l/by-nc/4.0/88x31.png" /></a><br />Ce(tte) œuvre est mise à disposition selon les termes de la <a rel="license" href="http://creativecommons.org/licenses/by-nc/4.0/">Licence Creative Commons Attribution - Pas d’Utilisation Commerciale 4.0 International</a>.
