@@ -24,7 +24,7 @@ Mots clés : télédétéction spatiale, Sentinel 2, occupation du sol, classifi
 
 ## Liens vers la ressource pédagogique
 
-La ressource pédagogique (incluant les données nécessaires pour l'exercice) se trouve au lien suivant : https://doi.org/10.5281/zenodo.7224864
+La ressource pédagogique (incluant les données nécessaires pour l'exercice) est disponible à l'adresse suivante : https://doi.org/10.5281/zenodo.7224864
 
 Site internet : https://ptaconet.github.io/formation_initiation_teledetection/
 
