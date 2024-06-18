@@ -1,3 +1,5 @@
+Shield: [![CC BY 4.0][cc-by-shield]][cc-by]
+
 # Formation d'initiation à la télédétection sur logiciel libre
 
 ## Présentation de la ressource pédagogique
